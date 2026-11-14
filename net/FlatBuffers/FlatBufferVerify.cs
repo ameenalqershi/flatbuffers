@@ -621,6 +621,10 @@ namespace Google.FlatBuffers
       {
         return !required;
       }
+      if (!CheckIndirectOffset(offset))
+      {
+        return false;
+      }
       uint vecOffset = GetIndirectOffset(offset);
       if (!CheckVector(vecOffset, SIZE_BYTE))
       {
