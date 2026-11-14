@@ -25,6 +25,45 @@ namespace Google.FlatBuffers.Test
         private readonly Lcg _lcg = new Lcg();
 
         [FlatBuffersTestMethod]
+        public void TestNestedBufferRejectsOutOfBoundsFieldSlot()
+        {
+            // A valid nested FlatBuffer, wrapped in a one-field outer table.
+            var nestedBuilder = new FlatBufferBuilder(16);
+            nestedBuilder.StartTable(0);
+            int nestedTable = nestedBuilder.EndTable();
+            nestedBuilder.Finish(nestedTable);
+            byte[] nestedBytes = nestedBuilder.SizedByteArray();
+
+            var builder = new FlatBufferBuilder(64);
+            builder.StartVector(sizeof(byte), nestedBytes.Length, sizeof(byte));
+            for (int i = nestedBytes.Length - 1; i >= 0; i--)
+            {
+                builder.AddByte(nestedBytes[i]);
+            }
+            int nestedVector = builder.EndVector().Value;
+            builder.StartTable(1);
+            builder.AddOffset(0, nestedVector, 0);
+            int outerTable = builder.EndTable();
+            builder.Finish(outerTable);
+
+            var buffer = new ByteBuffer(builder.SizedByteArray());
+            VerifyTableAction verifyOuter = (v, pos) =>
+                v.VerifyTableStart(pos) &&
+                v.VerifyNestedBuffer(pos, 4, null, true) &&
+                v.VerifyTableEnd(pos);
+
+            Assert.IsTrue(new Verifier(buffer).VerifyBuffer(null, false, verifyOuter));
+
+            // The vtable is structurally in-bounds, but its field slot points
+            // far beyond the buffer. Verification must return false, not throw.
+            int rootPos = buffer.GetInt(0);
+            int vtablePos = rootPos - buffer.GetInt(rootPos);
+            buffer.PutUshort(vtablePos + 4, 0x7ffe);
+
+            Assert.IsFalse(new Verifier(buffer).VerifyBuffer(null, false, verifyOuter));
+        }
+
+        [FlatBuffersTestMethod]
         public void TestObjects()
         {
             CheckObjects(11, 100);
